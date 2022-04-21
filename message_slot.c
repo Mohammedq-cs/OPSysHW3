@@ -13,7 +13,7 @@
 #include "message_slot.h"
 MODULE_LICENSE("GPL");
 
-channel *devices[257];
+channel *channelsHead[257];
 
 
 //================== DEVICE FUNCTIONS ===========================
@@ -28,10 +28,10 @@ static int device_open( struct inode* inode,
         printk("file data malloc has failed in device_open. file: %p\n", file);
         return -ENOMEM;
     }
-    data->minor_number = minor;
-    data->current_channel_id = 0;
+    data->minorNum = minor;
+    data->currentChannelId = 0;
     file->private_data = (void*) data;
-
+    printk("Success in opening the file");
     return SUCCESS;
 }
 
@@ -54,10 +54,10 @@ static ssize_t device_read( struct file* file,
     fileData *fData;
     channel *ch;
     fData = (fileData*) file->private_data;
-    if (buffer == NULL || fData->current_channel_id == 0){
+    if (buffer == NULL || fData->currentChannelId == 0){
         return -EINVAL;
     }
-    ch = fData->current_channel;
+    ch = fData->currentChannel;
     if (ch->message_size == 0){
         return -EWOULDBLOCK;
     }
@@ -68,6 +68,7 @@ static ssize_t device_read( struct file* file,
         return -EIO;
     }
 
+    printk("success in reading message, message len is %d\n", ch->message_size);
     return ch->message_size;
 }
 
@@ -79,16 +80,17 @@ static ssize_t device_write( struct file*       file,
                              size_t             length,
                              loff_t*            offset)
 {
+    int i;
     fileData *data;
     channel *ch;
     char msg[BUFFER_LEN];
     data = file->private_data;
-    ch = (channel*) data->current_channel;
+    ch = (channel*) data->currentChannel;
     
     if (buffer == NULL){
         return -EINVAL;
     }
-    if (data->current_channel_id == 0){
+    if (data->currentChannelId == 0){
         return -EINVAL;
     }
     if (length == 0 || length > BUFFER_LEN){
@@ -102,6 +104,7 @@ static ssize_t device_write( struct file*       file,
         ch->message[i] = msg[i];
     }
     ch->message_size = (int) length;
+    printk("success in writing message, message len is %d\n", i);
     return i;
   
 }
@@ -111,63 +114,62 @@ static long device_ioctl( struct   file* file,
                           unsigned int   ioctl_command_id,
                           unsigned long  ioctl_param )
 {
-    fileData *data;
+    fileData *fData;
     unsigned int minor;
-    channel *ch;
-    channel *tmp;
-    channel *prev;
+    channel *channelHead;
+    channel *tmpChannel;
+    channel *prevChannel;
     if (ioctl_command_id != MSG_SLOT_CHANNEL || ioctl_param == 0){
         return -EINVAL;
     }
-    data = file->private_data;
-    minor = data->minor_number;
-    if (ioctl_param == data->current_channel_id){
+    fData = file->private_data;
+    minor = fData->minorNum;
+    if (ioctl_param == fData->currentChannelId){
         return SUCCESS;
     }
-    ch = (channel*) devices[minor];
+    channelHead = (channel*) channelsHead[minor];
     //we still have no channels, so we create a new one.
-    if (ch == NULL)
+    if (channelHead == NULL)
     {
-        ch = kmalloc(sizeof(channel), GFP_KERNEL);
-        if (ch == NULL){
+        channelHead = kmalloc(sizeof(channel), GFP_KERNEL);
+        if (channelHead == NULL){
             printk(KERN_ERR "channel allocation has failed.\n");
             return -ENOMEM;
         }
-        ch->channel_id = ioctl_param;
-        ch->message_size = 0;
-        ch->next = NULL;
-        data->current_channel_id = ioctl_param;
-        data->current_channel = ch;
-        devices[minor] = (channel*) ch;
+        channelHead->channelId = ioctl_param;
+        channelHead->message_size = 0;
+        channelHead->next = NULL;
+        fData->currentChannelId = ioctl_param;
+        fData->currentChannel = channelHead;
+        channelsHead[minor] = (channel*) channelHead;
+        printk("success creating a head channel");
         return SUCCESS;
-
     }
-    //we have to
-    else{
-        tmp = ch;
-        while (tmp != NULL) {
-            if (tmp->channel_id == ioctl_param) {
-                data->current_channel = (channel *) tmp;
-                data->current_channel_id = ioctl_param;
-                return SUCCESS;
-            }
-            prev = tmp;
-            tmp = tmp->next;
+    
+    tmpChannel = channelHead;
+    while (tmpChannel != NULL) {
+        if (tmpChannel->channelId == ioctl_param) {
+            fData->currentChannel = (channel *) tmpChannel;
+            fData->currentChannelId = ioctl_param;
+            printk("success in finding the channel");
+            return SUCCESS;
         }
-        tmp = kmalloc(sizeof(channel), GFP_KERNEL);
-        if (tmp == NULL){
-            printk(KERN_ERR "channel allocation has failed.\n");
-            return -ENOMEM;
-        }
-        tmp->channel_id = ioctl_param;
-        tmp->message_size = 0;
-        tmp->next = NULL;
-        prev->next = tmp;
-        data->current_channel_id = ioctl_param;
-        data->current_channel = tmp;
+        prevChannel = tmpChannel;
+        tmpChannel = tmpChannel->next;
     }
-
-  return SUCCESS;
+    tmpChannel = kmalloc(sizeof(channel), GFP_KERNEL);
+    if (tmpChannel == NULL){
+        printk(KERN_ERR "channel allocation has failed.\n");
+        return -ENOMEM;
+    }
+    tmpChannel->channelId = ioctl_param;
+    tmpChannel->message_size = 0;
+    tmpChannel->next = NULL;
+    prevChannel->next = tmpChannel;
+    fData->currentChannelId = ioctl_param;
+    fData->currentChannel = tmpChannel;
+    printk("success creating a tail channel");
+    return SUCCESS;
 }
 
 //==================== DEVICE SETUP =============================
@@ -196,7 +198,7 @@ static int __init simple_init(void)
         return rc;
     }
     for (i = 0; i < 257; i++){
-        devices[i] = NULL;
+        channelsHead[i] = NULL;
     }
     printk("Registeration is successful.\n");
 	return SUCCESS;
@@ -206,21 +208,21 @@ static int __init simple_init(void)
 static void __exit simple_cleanup(void)
 {
     int i;
-    channel *tmp, *head;
+    channel *tmp, *ch;
     for (i = 0; i < 257; ++i)
     {
-        channel *ch = devices[i];
-        head = ch;
-        while (head != NULL)
+        ch = channelsHead[i];
+        while (ch != NULL)
         {
-            tmp = head;
-            head = head->next;
+            tmp = ch;
+            ch = ch->next;
             kfree(tmp);
         }
     }
   // Unregister the device
   // Should always succeed
   unregister_chrdev(MAJOR_NUM, DEVICE_RANGE_NAME);
+  printk("device unregisteration is successful.\n");
 }
 
 //---------------------------------------------------------------

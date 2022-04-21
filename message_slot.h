@@ -11,12 +11,12 @@
 typedef struct channel{
     char message[BUFFER_LEN];
     int message_size;
-    unsigned long channel_id;
+    unsigned long channelId;
     struct channel *next;
 } channel;
 
 typedef struct file_data {
-    unsigned int minor_number;
-    channel *current_channel;
-    unsigned long current_channel_id;
+    unsigned int minorNum;
+    channel *currentChannel;
+    unsigned long currentChannelId;
 } fileData;

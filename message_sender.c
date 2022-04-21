@@ -10,7 +10,7 @@
 int main(int argc, char** argv)
 {
     char *file_path;
-    unsigned long channel_id;
+    unsigned long channelId;
     char* message;
     int fd;
     int ret;
@@ -22,14 +22,14 @@ int main(int argc, char** argv)
     }
 
     file_path = argv[1];
-    channel_id = atoi(argv[2]);
+    channelId = atoi(argv[2]);
     message = argv[3];
     fd = open(file_path, O_RDWR);
     if (fd < 0){
         fprintf(stderr, "error opening device file, error: %s\n", strerror(errno));
         exit(1);
     }
-    ret = ioctl(fd, MSG_SLOT_CHANNEL, channel_id);
+    ret = ioctl(fd, MSG_SLOT_CHANNEL, channelId);
     if (ret < 0){
         fprintf(stderr, "ioctl has failed, error: %s\n", strerror(errno));
         exit(1);
