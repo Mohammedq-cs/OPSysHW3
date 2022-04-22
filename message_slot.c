@@ -214,7 +214,7 @@ static void __exit simple_cleanup(void)
         head = ch;
         while (head != NULL)
         {
-            tmp = ch;
+            tmp = head;
             head = head->next;
             kfree(tmp);
         }
