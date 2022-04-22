@@ -3,14 +3,15 @@
 #undef MODULE
 #define MODULE
 
-#include <linux/kernel.h>   /* We're doing kernel work */
-#include <linux/module.h>   /* Specifically, a module */
-#include <linux/fs.h>       /* for register_chrdev */
-#include <linux/uaccess.h>  /* for get_user and put_user */
-#include <linux/string.h>   /* for memset. NOTE - not string.h!*/
+#include <linux/kernel.h>
+#include <linux/module.h>
+#include <linux/init.h>
+#include <linux/fs.h>
+#include <linux/uaccess.h>
+#include <linux/string.h>
 #include <linux/slab.h>
+#include <linux/ioctl.h>
 #include <linux/errno.h>
-#include "message_slot.h"
 MODULE_LICENSE("GPL");
 
 channel *channelsHead[257];
