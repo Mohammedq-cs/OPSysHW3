@@ -29,13 +29,13 @@ int main(int argc, char *argv[]){
         exit(1);
     }
     tmpVal = read(fileDesc, buffer, BUFFER_LEN);
-    if (tmpVal <= 0){
+    if (tmpVal < 0){
         fprintf(stderr, "read has failed, error: %s\n", strerror(errno));
         exit(1);
     }
     /*here tmpVal is equal to the message len, that is why we give it to write*/
     tmpVal = write(1, buffer, tmpVal);
-    if (tmpVal <= 0){
+    if (tmpVal < 0){
         fprintf(stderr, "printing to stdout has failed, error: %s\n", strerror(errno));
         exit(1);
     }

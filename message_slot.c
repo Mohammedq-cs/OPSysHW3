@@ -74,7 +74,6 @@ static ssize_t device_read( struct file* file,
 
 //---------------------------------------------------------------
 // a processs which has already opened
-// the device file attempts to write to it
 static ssize_t device_write( struct file*       file,
                              const char __user* buffer,
                              size_t             length,
@@ -105,8 +104,7 @@ static ssize_t device_write( struct file*       file,
     }
     ch->message_size = (int) length;
     printk("success in writing message, message len is %d\n", i);
-    return i;
-  
+    return i; 
 }
 
 //----------------------------------------------------------------
