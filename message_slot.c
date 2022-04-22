@@ -74,6 +74,7 @@ static ssize_t device_read( struct file* file,
 
 //---------------------------------------------------------------
 // a processs which has already opened
+// the device file attempts to write to it
 static ssize_t device_write( struct file*       file,
                              const char __user* buffer,
                              size_t             length,
@@ -104,7 +105,8 @@ static ssize_t device_write( struct file*       file,
     }
     ch->message_size = (int) length;
     printk("success in writing message, message len is %d\n", i);
-    return i; 
+    return i;
+  
 }
 
 //----------------------------------------------------------------
@@ -114,7 +116,7 @@ static long device_ioctl( struct   file* file,
 {
     fileData *fData;
     unsigned int minor;
-    channel *channelHead;
+    channel *headChannel;
     channel *tmpChannel;
     channel *prevChannel;
     if (ioctl_command_id != MSG_SLOT_CHANNEL || ioctl_param == 0){
@@ -125,26 +127,25 @@ static long device_ioctl( struct   file* file,
     if (ioctl_param == fData->currentChannelId){
         return SUCCESS;
     }
-    channelHead = (channel*) channelsHead[minor];
+    headChannel = (channel*) channelsHead[minor];
     //we still have no channels, so we create a new one.
-    if (channelHead == NULL)
+    if (headChannel == NULL)
     {
-        channelHead = kmalloc(sizeof(channel), GFP_KERNEL);
-        if (channelHead == NULL){
+        headChannel = kmalloc(sizeof(channel), GFP_KERNEL);
+        if (headChannel == NULL){
             printk(KERN_ERR "channel allocation has failed.\n");
             return -ENOMEM;
         }
-        channelHead->channelId = ioctl_param;
-        channelHead->message_size = 0;
-        channelHead->next = NULL;
+        headChannel->channelId = ioctl_param;
+        headChannel->message_size = 0;
+        headChannel->next = NULL;
         fData->currentChannelId = ioctl_param;
-        fData->currentChannel = channelHead;
-        channelsHead[minor] = (channel*) channelHead;
+        fData->currentChannel = headChannel;
+        channelsHead[minor] = (channel*) headChannel;
         printk("success creating a head channel");
         return SUCCESS;
     }
-    
-    tmpChannel = channelHead;
+    tmpChannel = headChannel;
     while (tmpChannel != NULL) {
         if (tmpChannel->channelId == ioctl_param) {
             fData->currentChannel = (channel *) tmpChannel;
@@ -206,19 +207,19 @@ static int __init simple_init(void)
 static void __exit simple_cleanup(void)
 {
     int i;
-    channel *tmp, *ch;
+    channel *tmp, *head;
     for (i = 0; i < 257; ++i)
     {
-        ch = channelsHead[i];
-        while (ch != NULL)
+        channel *ch = channelsHead[i];
+        head = ch;
+        while (head != NULL)
         {
             tmp = ch;
             ch = ch->next;
             kfree(tmp);
         }
     }
-  // Unregister the device
-  // Should always succeed
+
   unregister_chrdev(MAJOR_NUM, DEVICE_RANGE_NAME);
   printk("device unregisteration is successful.\n");
 }
