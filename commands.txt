@@ -1,0 +1,5 @@
+cat /proc/devices
+mknod /dev/slot0 c 235 0
+mknod /dev/slot1 c 235 1
+sudo insmod message_slot.ko
+gcc -O3 -Wall -std=c11 message_sender.c

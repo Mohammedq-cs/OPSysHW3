@@ -20,7 +20,7 @@ int main(int argc, char *argv[]){
     channelId = atoi(argv[2]);
     fileDesc = open(file_path, O_RDWR);
     if (fileDesc < 0){
-        fprintf(stderr, "error opening device file, error: %s\n", strerror(errno));
+        fprintf(stderr, "opening device has failed, error: %s\n", strerror(errno));
         exit(1);
     }
     tmpVal = ioctl(fileDesc, MSG_SLOT_CHANNEL, channelId);
