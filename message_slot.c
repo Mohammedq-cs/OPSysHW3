@@ -3,77 +3,94 @@
 #undef MODULE
 #define MODULE
 
-
-#include <linux/kernel.h>
-#include <linux/module.h>
-#include <linux/init.h>
-#include <linux/fs.h>
-#include <linux/uaccess.h>
-#include <linux/string.h>
+#include <linux/kernel.h>   /* We're doing kernel work */
+#include <linux/module.h>   /* Specifically, a module */
+#include <linux/fs.h>       /* for register_chrdev */
+#include <linux/uaccess.h>  /* for get_user and put_user */
+#include <linux/string.h>   /* for memset. NOTE - not string.h!*/
 #include <linux/slab.h>
-#include <linux/ioctl.h>
 #include <linux/errno.h>
 #include "message_slot.h"
-
 MODULE_LICENSE("GPL");
 
-channel *channelHeads[257];
+channel *channelsHead[257];
+
 
 //================== DEVICE FUNCTIONS ===========================
-static int device_open(struct inode *inode, struct file *file){
+static int device_open( struct inode* inode,
+                        struct file*  file )
+{
     unsigned int minor;
-    fileData *fileData;
+    fileData *data;
     minor = iminor(inode);
-    fileData = kmalloc(sizeof(fileData*), GFP_KERNEL);
-    if (fileData == NULL){
-        printk("file fileData malloc has failed in device_open. file: %p\n", file);
+    data = kmalloc(sizeof(fileData*), GFP_KERNEL);
+    if (data == NULL){
+        printk("file data malloc has failed in device_open. file: %p\n", file);
         return -ENOMEM;
     }
-    fileData->minorNum = minor;
-    fileData->currentChannelId = 0;
-    file->private_data = (void*) fileData;
+    data->minorNum = minor;
+    data->currentChannelId = 0;
+    file->private_data = (void*) data;
     printk("Success in opening the file");
     return SUCCESS;
 }
 
-static int device_release(struct inode* inode, struct file *file){
+//---------------------------------------------------------------
+static int device_release( struct inode* inode,
+                           struct file*  file)
+{
     kfree(file->private_data);
     return SUCCESS;
 }
 
-static ssize_t device_read(struct file* file, char __user *buffer, size_t length, loff_t *offset){
-    fileData *fileData;
-    channel *headChannel;
-    fileData = (fileData*) file->private_data;
-    if (buffer == NULL || fileData->currentChannelId == 0){
+//---------------------------------------------------------------
+// a process which has already opened
+// the device file attempts to read from it
+static ssize_t device_read( struct file* file,
+                            char __user* buffer,
+                            size_t       length,
+                            loff_t*      offset )
+{
+    fileData *fData;
+    channel *ch;
+    fData = (fileData*) file->private_data;
+    if (buffer == NULL || fData->currentChannelId == 0){
         return -EINVAL;
     }
-    headChannel = fileData->currentChannel;
-    if (headChannel->messageSize == 0){
+    ch = fData->currentChannel;
+    if (ch->message_size == 0){
         return -EWOULDBLOCK;
     }
-    if (length < headChannel->messageSize){
+    if (length < ch->message_size){
         return -ENOSPC;
     }
-    if (copy_to_user(buffer, headChannel->message, headChannel->messageSize) != 0){
+    if (copy_to_user(buffer, ch->message, ch->message_size) != 0){
         return -EIO;
     }
-    printk("success in reading message, message len is %d\n", headChannel->message_size);
-    return headChannel->messageSize;
+
+    printk("success in reading message, message len is %d\n", ch->message_size);
+    return ch->message_size;
 }
 
-static ssize_t device_write(struct file* file, const char __user* buffer, size_t length, loff_t *offset){
-    fileData *fileData;
-    channel *headChannel;
-    char msg[BUFFER_LEN];
+//---------------------------------------------------------------
+// a processs which has already opened
+// the device file attempts to write to it
+static ssize_t device_write( struct file*       file,
+                             const char __user* buffer,
+                             size_t             length,
+                             loff_t*            offset)
+{
     int i;
-    fileData = file->private_data;
-    headChannel = (channel*) fileData->currentChannel;
-
+    fileData *data;
+    channel *ch;
+    char msg[BUFFER_LEN];
+    data = file->private_data;
+    ch = (channel*) data->currentChannel;
+    
     if (buffer == NULL){
         return -EINVAL;
     }
-    if (fileData->currentChannelId == 0){
+    if (data->currentChannelId == 0){
         return -EINVAL;
     }
     if (length == 0 || length > BUFFER_LEN){
@@ -83,50 +100,56 @@ static ssize_t device_write(struct file* file, const char __user* buffer, size_t
         return -EIO;
     }
 
-    for (i = 0; i < BUFFER_LEN && i < length; ++i){
-        headChannel->message[i] = msg[i];
+    for (i = 0; i < BUFFER_LEN && i < length; i++){
+        ch->message[i] = msg[i];
     }
-    headChannel->messageSize = (int) length;
+    ch->message_size = (int) length;
     printk("success in writing message, message len is %d\n", i);
     return i;
+  
 }
 
-static long device_ioctl(struct file* file, unsigned int ioctl_command_id, unsigned long ioctl_param){
-    fileData *fileData;
-    channel *headChannel;
-    channel *prevChannel;
-    channel *tmpChannel;
+//----------------------------------------------------------------
+static long device_ioctl( struct   file* file,
+                          unsigned int   ioctl_command_id,
+                          unsigned long  ioctl_param )
+{
+    fileData *fData;
     unsigned int minor;
-
+    channel *headChannel;
+    channel *tmpChannel;
+    channel *prevChannel;
     if (ioctl_command_id != MSG_SLOT_CHANNEL || ioctl_param == 0){
         return -EINVAL;
     }
-    fileData = file->private_data;
-    minor = fileData->minorNum;
-    if (ioctl_param == fileData->currentChannelId){
+    fData = file->private_data;
+    minor = fData->minorNum;
+    if (ioctl_param == fData->currentChannelId){
         return SUCCESS;
     }
-    headChannel = (channel*) channelHeads[minor];
-    if (headChannel == NULL){
+    headChannel = (channel*) channelsHead[minor];
+    //we still have no channels, so we create a new one.
+    if (headChannel == NULL)
+    {
         headChannel = kmalloc(sizeof(channel), GFP_KERNEL);
         if (headChannel == NULL){
             printk(KERN_ERR "channel allocation has failed.\n");
             return -ENOMEM;
         }
         headChannel->channelId = ioctl_param;
-        headChannel->messageSize = 0;
+        headChannel->message_size = 0;
         headChannel->next = NULL;
-        fileData->currentChannelId = ioctl_param;
-        fileData->currentChannel = headChannel;
-        channelHeads[minor] = (channel*) headChannel;
+        fData->currentChannelId = ioctl_param;
+        fData->currentChannel = headChannel;
+        channelsHead[minor] = (channel*) headChannel;
         printk("success creating a head channel");
         return SUCCESS;
     }
     tmpChannel = headChannel;
-    while (tmpChannel != NULL){
-        if (tmpChannel->channelId == ioctl_param){
-            fileData->currentChannel = (channel*) tmpChannel;
-            fileData->currentChannelId = ioctl_param;
+    while (tmpChannel != NULL) {
+        if (tmpChannel->channelId == ioctl_param) {
+            fData->currentChannel = (channel *) tmpChannel;
+            fData->currentChannelId = ioctl_param;
             printk("success in finding the channel");
             return SUCCESS;
         }
@@ -139,57 +162,70 @@ static long device_ioctl(struct file* file, unsigned int ioctl_command_id, unsig
         return -ENOMEM;
     }
     tmpChannel->channelId = ioctl_param;
-    tmpChannel->messageSize = 0;
+    tmpChannel->message_size = 0;
     tmpChannel->next = NULL;
     prevChannel->next = tmpChannel;
-    fileData->currentChannelId = ioctl_param;
-    fileData->currentChannel = tmpChannel;
-    
+    fData->currentChannelId = ioctl_param;
+    fData->currentChannel = tmpChannel;
     printk("success creating a tail channel");
     return SUCCESS;
 }
-//---------------DEVICE SETUP---------------
 
-static const struct file_operations fops = {
-        .owner = THIS_MODULE,
-        .open = device_open,
-        .read = device_read,
-        .write = device_write,
-        .unlocked_ioctl = device_ioctl,
-        .release = device_release
+//==================== DEVICE SETUP =============================
+
+// This structure will hold the functions to be called
+// when a process does something to the device we created
+struct file_operations Fops =
+{
+  .owner	  = THIS_MODULE, 
+  .read           = device_read,
+  .write          = device_write,
+  .open           = device_open,
+  .unlocked_ioctl = device_ioctl,
+  .release        = device_release,
 };
 
-static int __init simple_init(void){
-    int ret;
+//---------------------------------------------------------------
+// Initialize the module - Register the character device
+static int __init simple_init(void)
+{
+    int rc;
     int i;
-    ret = register_chrdev(MAJ_NUMBER, NAME, &fops);
-    if (ret < 0){
-        printk(KERN_ERR "device registration failed for %s, number: %d\n", NAME, MAJ_NUMBER);
-        return ret;
+    rc = register_chrdev(MAJOR_NUM, DEVICE_RANGE_NAME, &Fops);
+    if (rc < 0){
+        printk(KERN_ERR "device registration failed for %s with number: %d\n", DEVICE_RANGE_NAME, MAJOR_NUM);
+        return rc;
     }
-    for (i = 0; i < 257; ++i){
-        channelHeads[i] = NULL;
+    for (i = 0; i < 257; i++){
+        channelsHead[i] = NULL;
     }
-    printk("Device has successfully registered.\n");
+    printk("Registeration is successful.\n");
 	return SUCCESS;
 }
 
-static void __exit slot_cleanup(void){
+//---------------------------------------------------------------
+static void __exit simple_cleanup(void)
+{
     int i;
     channel *tmp, *head;
-    for (i = 0; i < 257; ++i){
-        channel *ch = channelHeads[i];
+    for (i = 0; i < 257; ++i)
+    {
+        channel *ch = channelsHead[i];
         head = ch;
-        while (head != NULL){
+        while (head != NULL)
+        {
             tmp = head;
             head = head->next;
             kfree(tmp);
         }
     }
-    unregister_chrdev(MAJ_NUMBER, NAME);
-    printk("Device successfully unregistered.\n");
+
+  unregister_chrdev(MAJOR_NUM, DEVICE_RANGE_NAME);
+  printk("device unregisteration is successful.\n");
 }
 
+//---------------------------------------------------------------
 module_init(simple_init);
-module_exit(slot_cleanup);
+module_exit(simple_cleanup);
 
+//========================= END OF FILE =========================

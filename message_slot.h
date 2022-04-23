@@ -1,15 +1,16 @@
-#include <linux/errno.h>
+#define _MESSAGE_SLOT_H_
 
-#define SUCCESS 0
+#include <linux/ioctl.h>
+
 #define BUFFER_LEN 128
-#define NAME "message_slot"
-#define MAJ_NUMBER 235
-#define MSG_SLOT_CHANNEL _IOW(MAJ_NUMBER, 0, unsigned int)
-
+#define SUCCESS 0
+#define MAJOR_NUM 235
+#define MSG_SLOT_CHANNEL _IOW(MAJOR_NUM, 0, unsigned int)
+#define DEVICE_RANGE_NAME "message_slot"
 
 typedef struct channel{
     char message[BUFFER_LEN];
-    int messageSize;
+    int message_size;
     unsigned long channelId;
     struct channel *next;
 } channel;
