@@ -1,4 +1,5 @@
 #include <linux/errno.h>
+
 #define SUCCESS 0
 #define BUFFER_LEN 128
 #define NAME "message_slot"
@@ -8,13 +9,13 @@
 
 typedef struct channel{
     char message[BUFFER_LEN];
-    int message_size;
-    unsigned long channel_id;
+    int messageSize;
+    unsigned long channelId;
     struct channel *next;
 } channel;
 
 typedef struct file_data {
-    unsigned int minor_number;
-    channel *current_channel;
-    unsigned long current_channel_id;
-} fdata;
+    unsigned int minorNum;
+    channel *currentChannel;
+    unsigned long currentChannelId;
+} fileData;
